@@ -9,14 +9,10 @@ import java.io.IOException;
 
 public class MineSweeperMaster {
 
-    final static int UNCOVERED = -2;
+    final static char COVERED = '*';
+    final static char UNCOVERED = '.';
+    final static char FIRSTCLICK = 'c';
     
-    /* The character representation of the board */
-    char [][] board;
-    
-    /* The rows, columns, and count of mines passed in */
-    int rows, cols, mines;
-    int cells;  // cells = rows * cols
 
     /**
      * @param args
@@ -31,7 +27,6 @@ public class MineSweeperMaster {
             int cases = Integer.parseInt(in.readLine());
             
             int r, c, m;
-            MineSweeperMaster game = new MineSweeperMaster();
             
             for (int caseNo = 1; caseNo <= cases; caseNo++) {
                 // get test case data
@@ -39,30 +34,49 @@ public class MineSweeperMaster {
                 r = Integer.parseInt(vars[0]);
                 c = Integer.parseInt(vars[1]);
                 m = Integer.parseInt(vars[2]);
+                int remains = r * c - m;
                 
                 System.out.format("Case #%d:\n", caseNo);
+                
+                char[][] board = null;
 
                 if (m == 0) {
-                    printFull(r, c, '.');
-                    continue;
-                } else if (m == r * c - 1) {
-                    printFull(r, c, '*');
-                    continue;
-                } else if (r < 3 && c < 3) {
-                    System.out.println("Impossible");
-                    continue;
+                    board = initBoard(r, c, UNCOVERED);
+                    board[0][0] = FIRSTCLICK;
+                } else if (remains == 1) {
+                    board = initBoard(r, c, UNCOVERED);
+                    board[0][0] = FIRSTCLICK;
                 } else if (r == 1) {
-                    printSingleRow(c, m);
-                    continue;
+                    board = uncoverByMatrix(1, c, 1, remains);
                 } else if (c == 1) {
-                    printSingleCol(r, m);
-                    continue;
-                } else if (m > r * c - 4) {
-                    System.out.println("Impossible");
-                    continue;
+                    board = uncoverByMatrix(r, 1, remains, 1);
+                } else if (remains == 2 || remains == 3 || remains == 5 || remains == 7) {
+                    // impossible
+                } else if (r == 2) {
+                    if (m % 2 == 1) {
+                        // impossible
+                    } else {
+                        board = uncoverByMatrix(2, c, 2, remains / 2);
+                    }
+                } else if (c == 2) {
+                    if (m % 2 == 1) {
+                        // impossible
+                    } else {
+                        board = uncoverByMatrix(r, 2, remains / 2, 2);
+                    }
+/*                } else if (remains == 4 || remains == 6 || remains == 8 || remains == 9) {
+                    int rows = 2, cols = remains / 2;
+                    if (remains == 9) {
+                        rows = 3; cols = 3;
+                    }
+                    board = uncoverByMatrix(r, c, rows, cols);*/
                 } else {
-                    // brute force
-                    game.getBruteForceSolution(r, c, m);
+                    board = rowFill(r, c, m, remains);
+                }
+                if (board == null) {
+                    System.out.println("Impossible");
+                } else {
+                    printResults(board, r, c);
                 }
             }
             
@@ -76,244 +90,110 @@ public class MineSweeperMaster {
 
     }
 
+    
     /**
-     * Brute Force solution
-     * @param R
-     * @param C
+     * Fill the mines by rows, from top to down, row by row, and line by line. 
+     * If can solve with one click, then return a board. Else return null.
+     * Since those cases of cannot fill have been listed above, definitely we can fill.
+     * @param r
+     * @param c
      * @param m
+     * @param remains
+     * @return the board
      */
-    public void getBruteForceSolution(int R, int C, int m) {
-        this.cells = R * C;
-        this.mines = m;
-        this.rows = R;
-        this.cols = C;
-        
-        // Initialize the board
-        this.board = new char[rows][cols];
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                board[i][j] = '.';
-            }
-        }
-        
-        // Run brute force algorithm, to create the board, and try to "click and open"
-        if (! fillBoard(m - 1, -1)) {
-            System.out.println("Impossible");
-        }
-    }
-    
-    
-    /**
-     * Recursively fill the mines into the board, and test. Once found a solution, return true.
-     * @param remains The remained mines after this iteration
-     * @param prevPosition The last mine placed.
-     * @return If got a solution, return true. Else false.
-     */
-    private boolean fillBoard(int remains, int prevPosition) {
-        for (int i = prevPosition + 1; i < cells - remains; i++) {
-            int r = i / cols;
-            int c = i - r * cols;
-            
-            // try to place the mine into this cell
-            board[r][c] = '*';
-            
-            // If all the mines have been placed into the board, do a test.
-            if (remains == 0) {
-                // Check the board
-                if (canSolve()) {
-                    // If problem solved, then print the board and return true.
-                    printResults(board, rows, cols);
-                    return true;
-                }
+    private static char[][] rowFill(int r, int c, int m, int remains) {
+        int rs = m / c;
+        int cs = m % c;
+        char[][] board = null;
+        if (rs < r - 2 && cs < c - 1) {
+            board = uncoverByLineFill(r, c, rs, cs);
+        } else if (rs < r - 3 && cs == c - 1) {
+            board = uncoverByLineFill(r, c, rs, cs);
+            board[rs + 1][0] = COVERED;
+            board[rs][cs - 1] = UNCOVERED;
+        } else if (rs == r - 3 && cs == c - 1) {
+            board = uncoverByLineFill(r, c, rs, cs);
+            board[r - 2][0] = COVERED;
+            board[r - 1][0] = COVERED;
+            board[rs][cs - 1] = UNCOVERED;
+            board[rs][cs - 2] = UNCOVERED;
+        } else { // (rs >= r - 2)
+            if (remains % 2 == 0) {
+                board = uncoverByMatrix(r, c, 2, remains / 2);
             } else {
-                // If there are mines to be placed, recursively call this function to place the mines, and test
-                if (fillBoard(remains - 1, i)) {
-                    return true;
-                }
+                board = uncoverByMatrix(r, c, 2, (remains - 3) / 2);
+                board[2][0] = UNCOVERED;
+                board[2][1] = UNCOVERED;
+                board[2][2] = UNCOVERED;
             }
-            
-            // Restore the cell
-            board[r][c] = '.';
         }
-        return false;
+        
+        return board;
     }
+
     
     /**
-     * Check whether the current filled board can be solved. If yes, print the board and the first click.
-     * @return true if solvable. Else false.
+     * Create a rows * cols board and fill all its cells with a specific character.
+     * @param rows
+     * @param cols
+     * @param ch The char to be filled into the board
+     * @return The board
      */
-    private boolean canSolve() {
-        int[][] cboard = new int[rows][cols];
-        
-        // Update the mine counts.
+    private static char[][] initBoard(int rows, int cols, char ch) {
+        char[][] board = new char[rows][cols];
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
-                if (board[i][j] == '*') {
-                    // Update the count in the adjacent 8 cells
-                    if (i > 0) {
-                        if (j > 0) {
-                            cboard[i-1][j-1]++;
-                        }
-                        cboard[i-1][j]++;
-                        if (j < cols - 1) {
-                            cboard[i-1][j+1]++;
-                        }
-                    }
-                    if (i < rows - 1) {
-                        if (j > 0) {
-                            cboard[i+1][j-1]++;
-                        }
-                        cboard[i+1][j]++;
-                        if (j < cols - 1) {
-                            cboard[i+1][j+1]++;
-                        }
-                    }
-                    if (j > 0) {
-                        cboard[i][j-1]++;
-                    }
-                    if (j < cols - 1) {
-                        cboard[i][j+1]++;
-                    }
-                }
+                board[i][j] = ch;
             }
         }
-
-        // Find an 0 cell, keep their coordinations
-        int zeroX = -1, zeroY = -1;
-        for (int i = 0; i < rows; i++) {
-            if (zeroX > 0)
-                break;
-            
-            for (int j = 0; j < cols; j++) {
-                if (cboard[i][j] == 0) {
-                    zeroX = i; zeroY = j;
-                    break;
-                }
-            }
-        }
-        
-        // Couldn't found an "0" cell
-        if (zeroX == -1)
-            return false;
-        
-        // Uncover the numbers of "0" cell and the 8 cells around it.
-        uncover(zeroX, zeroY, cboard);
-        
-        // count the uncovered cells
-        int unCoveredCount = 0;
-        for (int i = 0; i < rows; i++) {
-            for (int j = 0; j < cols; j++) {
-                if (cboard[i][j] == UNCOVERED) {
-                    unCoveredCount++;
-                }
-            }
-        }
-        
-        // If all cells without mines have been uncovered, the problem solved! Bingo!
-        if (unCoveredCount == cells - mines) {
-            board[zeroX][zeroY] = 'c';
-            return true;
-        }
-        
-        return false;
-    }
-    
-    
-    /**
-     * Uncover the "0" cells and their neighbors
-     * @param row the row index
-     * @param column the column index
-     * @param numboard the number board
-     */
-    private void uncover(int row, int column, int[][] numboard) {
-        // Check whether current cell is "0" cell
-        boolean isZeroCell = (numboard[row][column] == 0);
-        
-        // Mark the cell as uncovered
-        numboard[row][column] = UNCOVERED;
-        if (isZeroCell) {
-            // Uncover the neighbors of a "0" cell
-            if (row > 0) {
-                if (column > 0) {
-                    uncover(row-1, column-1, numboard);
-                }
-                uncover(row-1, column, numboard);
-                if (column < cols - 1) {
-                    uncover(row-1, column+1, numboard);
-                }
-            }
-            if (row < rows - 1) {
-                if (column > 0) {
-                    uncover(row+1, column-1, numboard);
-                }
-                uncover(row+1, column, numboard);
-                if (column < cols - 1) {
-                    uncover(row+1, column+1, numboard);
-                }
-            }
-            if (column > 0) {
-                uncover(row, column-1, numboard);
-            }
-            if (column < cols - 1) {
-                uncover(row, column+1, numboard);
-            }
-        }
-    }
-
-    /**
-     * Print a board with all empty or all mines except one not filled
-     * @param rows the count of rows of the game board
-     * @param columns the count of the columns of the game board
-     * @param ch '*' to print all filled mines, or '.' to print an empty board
-     */
-    public static void printFull(int rows, int columns, char ch) {
-        System.out.print('c');
-        for (int j = 1; j < columns; j++) {
-            System.out.print(ch);
-        }
-        System.out.println();
-        for (int i = 1; i < rows; i++) {
-            for (int j = 0; j < columns; j++) {
-                System.out.print(ch);
-            }
-            System.out.println();
-        }
+        return board;
     }
 
 
     /**
-     * Print a gaming board with single row
-     * @param cols The count of columns of the gaming board
-     * @param mines The count of mines
-     */
-    public static void printSingleRow(int cols, int mines) {
-        System.out.print('c');
-        int separator = cols - mines;
-        for (int j = 1; j < separator; j++) {
-            System.out.print('.');
-        }
-        for (int j = separator; j < cols; j++) {
-            System.out.print('*');
-        }
-        System.out.println();
-    }
-
-
-    /**
-     * Print a gaming board with single column
+     * Generate a rows * cols gaming board, make m * n columns uncovered
      * @param rows The count of rows of the gaming board
-     * @param mines The count of mines
+     * @param cols The count of columns of the gaming board
+     * @param m The count of rows uncovered
+     * @param n The count of columns uncovered
+     * @return The board
      */
-    public static void printSingleCol(int rows, int mines) {
-        System.out.println('c');
-        int separator = rows - mines;
-        for (int j = 1; j < separator; j++) {
-            System.out.println('.');
+    public static char[][] uncoverByMatrix(int rows, int cols, int m, int n) {
+        char[][]board = initBoard(rows, cols, COVERED);
+        for (int i = 0; i < m; i++) {
+            for (int j = 0; j < n; j++) {
+                board[i][j] = UNCOVERED;
+            }
         }
-        for (int j = separator; j < rows; j++) {
-            System.out.println('*');
-        }
+        board[0][0] = FIRSTCLICK;
+        return board;
     }
+    
+
+    /**
+     * Generate a rows * cols gaming board, cover the first m rows, and the first n cols of (m+1)th row
+     * @param rows The count of rows of the gaming board
+     * @param cols The count of columns of the gaming board
+     * @param m The count of rows covered
+     * @param n The count of columns covered in next row
+     * @return The board
+     */
+    public static char[][] uncoverByLineFill(int rows, int cols, int m, int n) {
+        char[][]board = initBoard(rows, cols, COVERED);
+        for (int j = n; j < cols; j++) {
+            board[m][j] = UNCOVERED;
+        }
+
+        for (int i = m + 1; i < rows; i++) {
+            for (int j = 0; j < cols; j++) {
+                board[i][j] = UNCOVERED;
+            }
+        }
+
+        board[rows-1][cols-1] = FIRSTCLICK;
+        return board;
+    }
+    
     
     /**
      * Print the gaming board
